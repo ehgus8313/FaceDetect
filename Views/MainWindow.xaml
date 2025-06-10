@@ -11,17 +11,20 @@
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
+    
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
     </Window.Resources>
+    
     <StackPanel VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
         <Label Content="{Binding CurrentFile.DetectPerson}" HorizontalAlignment="Center" Margin="10" FontSize="16" FontWeight="Bold"/>
         <Image Source="{Binding CurrentFile.DisplayImage}" Stretch="Uniform" MaxWidth="800" MaxHeight="600"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-            <Button Content="사진 OR 영상" Command="{Binding LoadImageCommand}" Width="200" Height="40" Margin="10"/>
+            <Button Content="사진 OR 영상" Command="{Binding LoadImageCommand}" Width="200" Height="40" Margin="10" Visibility="{Binding IsWebcamRunning, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+            <Button Content="웹캠" Command="{Binding StartWebcamCommand}" Width="200" Height="40" Margin="10" Visibility="{Binding IsVideoPlaying, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
             <Button Content="중지" Command="{Binding StopVideoCommand}" Width="200" Height="40" Margin="10" Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}" />
         </StackPanel>
-        
-    </StackPanel>
 
+    </StackPanel>
 </Window>

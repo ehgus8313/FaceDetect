@@ -1,5 +1,6 @@
 ﻿using APR_TEST.Models;
 using APR_TEST.Utils;
+using APR_TEST.Views;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -20,19 +21,30 @@ namespace APR_TEST.ViewModels
 {
     public partial class MainViewModel : ViewModelBase
     {
+        private VideoCapture? _capture;
+
+        private MediaPlayer? _mediaPlayer;
+
         [ObservableProperty]
         private FileData? currentFile;
 
-        private VideoCapture? _capture;
+        [ObservableProperty]
+        private bool isVideoPlaying;
+
+        [ObservableProperty]
+        private bool isWebcamRunning;
+
         private bool _isRunning;
+
         public bool IsRunning
         {
             get => _isRunning;
             set => SetProperty(ref _isRunning, value);
         }
+
         [ObservableProperty]
         private string? selectedTabTag;
-        private MediaPlayer? _mediaPlayer;
+
 
         public MainViewModel()
         {
@@ -40,7 +52,7 @@ namespace APR_TEST.ViewModels
         }
 
         [RelayCommand]
-        private async Task LoadImage()
+        private async Task LoadImageAsync()
         {
             StopVideo();
             var dlg = new OpenFileDialog
@@ -58,12 +70,92 @@ namespace APR_TEST.ViewModels
                 }
                 else
                 {
-                    ProcessImage(); // 결과 표시용
+                    ProcessViewImage(); // 결과 표시용
                 }
             }
         }
 
-        public void ProcessImage()
+        [RelayCommand]
+        public async Task StartWebcamAsync()
+        {
+            StopVideo();
+            if (IsRunning) return;
+
+            var webcams = CameraHelper.GetConnectedCameras();
+            if (webcams.Count == 0)
+            {
+                MessageBox.Show("사용 가능한 웹캠이 없습니다.");
+                return;
+            }
+
+            var dialog = new SelectWebcamDialog(webcams);
+            if (dialog.ShowDialog() != true || dialog.SelectedIndex < 0)
+                return;
+
+            int selectedIndex = dialog.SelectedIndex;
+
+            _capture = new VideoCapture(selectedIndex);
+            if (!_capture.IsOpened())
+            {
+                MessageBox.Show("웹캠 열기에 실패했습니다.");
+                return;
+            }
+
+            IsRunning = true;
+            var mat = new Mat();
+            int frameCount = 0;
+            CurrentFile = new FileData("");
+            try
+            {
+                IsVideoPlaying = false;
+                IsWebcamRunning = true;
+
+                while (IsRunning)
+                {
+                    _capture.Read(mat);
+                    if (mat.Empty()) break;
+
+                    frameCount++;
+                    if (frameCount % 2 == 0)
+                    {
+                        var matCopy = mat.Clone();
+                        _ = Task.Run(() =>
+                        {
+                            var bmp = ImageProcessor.DetectAndDecorateFace(matCopy, CurrentFile);
+                            bmp.Freeze();
+                            App.Current.Dispatcher.Invoke(() =>
+                            {
+                                if (IsRunning) CurrentFile.DisplayImage = bmp;
+                            });
+                        });
+                    }
+
+                    await Task.Delay(33);
+                }
+            }
+            finally
+            {
+                mat.Dispose();
+                _capture?.Release();
+                _capture?.Dispose();
+                StopVideo();
+            }
+        }
+
+
+        [RelayCommand]
+        private void StopVideo()
+        {
+            IsVideoPlaying = false;
+            IsWebcamRunning = false;
+
+            _mediaPlayer?.Stop();
+            _mediaPlayer = null;
+            IsRunning = false;
+            CurrentFile = null;
+        }
+
+        public void ProcessViewImage()
         {
             BitmapSource source = null;
             try
@@ -74,11 +166,14 @@ namespace APR_TEST.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"[ProcessImage] 예외 발생: {ex.Message}");
+                MessageBox.Show($"[ProcessViewImage] 예외 발생: {ex.Message}");
                 source = ImageProcessor.CreateBlankFallbackImage(600, 400, Colors.LightGray);
             }
             finally
             {
+                IsVideoPlaying = false;
+                IsWebcamRunning = false;
+
                 CurrentFile.DisplayImage = source;
             }
         }
@@ -114,6 +209,9 @@ namespace APR_TEST.ViewModels
 
             try
             {
+                IsVideoPlaying = true;
+                IsWebcamRunning = false;
+
                 while (IsRunning)
                 {
                     sw.Restart();
@@ -151,15 +249,6 @@ namespace APR_TEST.ViewModels
                 _capture?.Dispose();
                 StopVideo();
             }
-        }
-
-        [RelayCommand]
-        private void StopVideo()
-        {
-            _mediaPlayer?.Stop();
-            _mediaPlayer = null;
-            IsRunning = false;
-            CurrentFile = null;
         }
     }
 }
