@@ -19,19 +19,19 @@ namespace APR_TEST.Views
     /// </summary>
     public partial class SelectWebcamDialog : Window
     {
-        public int SelectedIndex { get; private set; } = -1;
+        public string? SelectedDeviceName { get; private set; }
 
-        public SelectWebcamDialog(List<string> devices)
+        public SelectWebcamDialog(List<string> deviceNames)
         {
             InitializeComponent();
-            WebcamComboBox.ItemsSource = devices;
-            if (devices.Count > 0)
+            WebcamComboBox.ItemsSource = deviceNames;
+            if (deviceNames.Count > 0)
                 WebcamComboBox.SelectedIndex = 0;
         }
 
         private void OnSelectClicked(object sender, RoutedEventArgs e)
         {
-            SelectedIndex = WebcamComboBox.SelectedIndex;
+            SelectedDeviceName = WebcamComboBox.SelectedItem?.ToString();
             DialogResult = true;
             Close();
         }

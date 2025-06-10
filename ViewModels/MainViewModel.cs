@@ -81,20 +81,25 @@ namespace APR_TEST.ViewModels
             StopVideo();
             if (IsRunning) return;
 
-            var webcams = CameraHelper.GetConnectedCameras();
-            if (webcams.Count == 0)
+            var webcamNames = CameraHelper.GetVideoInputDeviceNames();
+            if (webcamNames.Count == 0)
             {
                 MessageBox.Show("사용 가능한 웹캠이 없습니다.");
                 return;
             }
 
-            var dialog = new SelectWebcamDialog(webcams);
-            if (dialog.ShowDialog() != true || dialog.SelectedIndex < 0)
+            var dialog = new SelectWebcamDialog(webcamNames);
+            if (dialog.ShowDialog() != true || string.IsNullOrEmpty(dialog.SelectedDeviceName))
                 return;
 
-            int selectedIndex = dialog.SelectedIndex;
+            var realIndex = CameraHelper.GetCameraIndexByName(dialog.SelectedDeviceName);
+            if (realIndex is null)
+            {
+                MessageBox.Show("선택한 웹캠을 열 수 없습니다.");
+                return;
+            }
 
-            _capture = new VideoCapture(selectedIndex);
+            _capture = new VideoCapture(realIndex.Value);
             if (!_capture.IsOpened())
             {
                 MessageBox.Show("웹캠 열기에 실패했습니다.");

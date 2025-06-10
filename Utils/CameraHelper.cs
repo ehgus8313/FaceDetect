@@ -1,7 +1,10 @@
-﻿using System;
+﻿using DirectShowLib;
+
+using OpenCvSharp;
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Management;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -9,18 +12,25 @@ namespace APR_TEST.Utils
 {
     public static class CameraHelper
     {
-        public static List<string> GetConnectedCameras()
+        public static List<string> GetVideoInputDeviceNames()
         {
-            var result = new List<string>();
+            var devices = DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice);
+            return devices.Select(d => d.Name).ToList();
+        }
 
-            var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_PnPEntity WHERE Caption LIKE '%(usb%'");
-            foreach (var device in searcher.Get())
+        public static int? GetCameraIndexByName(string targetName)
+        {
+            var devices = DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice);
+            for (int i = 0; i < devices.Length; i++)
             {
-                if (device["Caption"] != null)
-                    result.Add(device["Caption"].ToString());
+                if (devices[i].Name.Contains(targetName, StringComparison.OrdinalIgnoreCase))
+                {
+                    using var cap = new VideoCapture(i);
+                    if (cap.IsOpened())
+                        return i;
+                }
             }
-
-            return result;
+            return null;
         }
     }
 }
