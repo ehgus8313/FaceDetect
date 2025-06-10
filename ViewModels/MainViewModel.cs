@@ -12,6 +12,8 @@ using OpenCvSharp.WpfExtensions;
 
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace APR_TEST.ViewModels
@@ -23,11 +25,24 @@ namespace APR_TEST.ViewModels
 
         private VideoCapture? _capture;
         private bool _isRunning;
+        public bool IsRunning
+        {
+            get => _isRunning;
+            set => SetProperty(ref _isRunning, value);
+        }
+        [ObservableProperty]
+        private string? selectedTabTag;
+        private MediaPlayer? _mediaPlayer;
 
+        public MainViewModel()
+        {
+            ImageProcessor.InitFaceModel(); // 전체 앱 최초 진입 시 초기화
+        }
 
         [RelayCommand]
-        private void LoadImage()
+        private async Task LoadImage()
         {
+            StopVideo();
             var dlg = new OpenFileDialog
             {
                 Filter = "Image or Video|*.jpg;*.png;*.bmp;*.mp4"
@@ -39,62 +54,112 @@ namespace APR_TEST.ViewModels
                 CurrentFile = new FileData(dlg.FileName);
                 if (ext == ".mp4")
                 {
-                    PlayVideoAsync();
+                    await PlayVideoAsync();
                 }
                 else
                 {
-                    CurrentFile.DisplayImage = ImageProcessor.ProcessImage(CurrentFile.FilePath); // 결과 표시용
+                    ProcessImage(); // 결과 표시용
                 }
             }
         }
 
-        [RelayCommand]
+        public void ProcessImage()
+        {
+            BitmapSource source = null;
+            try
+            {
+                using var mat = new Mat(CurrentFile.FilePath, ImreadModes.Color);
+
+                source = ImageProcessor.DetectAndDecorateFace(mat, CurrentFile);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"[ProcessImage] 예외 발생: {ex.Message}");
+                source = ImageProcessor.CreateBlankFallbackImage(600, 400, Colors.LightGray);
+            }
+            finally
+            {
+                CurrentFile.DisplayImage = source;
+            }
+        }
+
         private async Task PlayVideoAsync()
         {
-            _capture = new VideoCapture("video.mp4"); // 또는 new VideoCapture(0)
-
+            _capture = new VideoCapture(CurrentFile.FilePath);
             if (!_capture.IsOpened())
                 return;
 
-            var detector = Dlib.GetFrontalFaceDetector();
-            var predictor = ShapePredictor.Deserialize("shape_predictor_68_face_landmarks.dat");
+
+
+            IsRunning = true;
             var mat = new Mat();
-            _isRunning = true;
+            var sw = new System.Diagnostics.Stopwatch();
+            int targetFps = 30;
+            int targetFrameTime = 1000 / targetFps;
 
-            while (_isRunning)
+            int frameCount = 0;
+            int processEveryNthFrame = 2;
+            BitmapSource? lastImage = null;
+
+            if (MessageBox.Show("소리를 재생하시겠습니까?", "소리", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
-                _capture.Read(mat);
-                if (mat.Empty())
-                    break;
+                // 오디오 재생
+                _mediaPlayer = new MediaPlayer();
+                _mediaPlayer.Open(new Uri(CurrentFile.FilePath));
+                _mediaPlayer.Volume = 1.0;
 
-                var array = new byte[mat.Width * mat.Height * mat.ElemSize()];
-                Marshal.Copy(mat.Data, array, 0, array.Length);
-                using var dlibImage = Dlib.LoadImageData<RgbPixel>(array, (uint)mat.Height, (uint)mat.Width, (uint)(mat.Width * mat.ElemSize()));
-
-                var faces = detector.Operator(dlibImage);
-                if (faces.Length > 0)
-                {
-                    var shape = predictor.Detect(dlibImage, faces[0]);
-                    var nose = shape.GetPart(30); // nose tip
-                                                  // Draw Rudolph nose on the original Mat
-                    Cv2.Circle(mat, new OpenCvSharp.Point(nose.X, nose.Y), 20, Scalar.Red, -1);
-                }
-
-                // Convert Mat to BitmapSource
-                var bmp = mat.ToBitmapSource();
-                bmp.Freeze(); // WPF 쓰레드 안전 처리
-                CurrentFile.DisplayImage = bmp;
-
-                await Task.Delay(33); // 약 30fps
+                _mediaPlayer.MediaOpened += (s, e) => _mediaPlayer.Play();
             }
 
-            _capture.Release();
+
+            try
+            {
+                while (IsRunning)
+                {
+                    sw.Restart();
+
+                    _capture.Read(mat);
+                    if (mat.Empty()) break;
+
+                    frameCount++;
+
+                    if (frameCount % processEveryNthFrame == 0)
+                    {
+                        // 얼굴 인식은 백그라운드에서 처리
+                        var matCopy = mat.Clone(); // 별도 쓰레드에서 처리 위해 복제
+                        _ = Task.Run(() =>
+                        {
+                            var bmp = ImageProcessor.DetectAndDecorateFace(matCopy, CurrentFile);
+                            bmp.Freeze();
+                            App.Current.Dispatcher.Invoke(() =>
+                            {
+                                if (IsRunning) CurrentFile.DisplayImage = bmp;
+                            });
+                        });
+                    }
+
+                    sw.Stop();
+                    int elapsed = (int)sw.ElapsedMilliseconds;
+                    int wait = Math.Max(0, targetFrameTime - elapsed);
+                    await Task.Delay(wait);
+                }
+            }
+            finally
+            {
+                mat.Dispose();
+                _capture?.Release();
+                _capture?.Dispose();
+                StopVideo();
+            }
         }
 
         [RelayCommand]
         private void StopVideo()
         {
-            _isRunning = false;
+            _mediaPlayer?.Stop();
+            _mediaPlayer = null;
+            IsRunning = false;
+            CurrentFile = null;
         }
     }
 }

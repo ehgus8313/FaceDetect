@@ -5,13 +5,23 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:APR_TEST.Views"
         xmlns:vm="clr-namespace:APR_TEST.ViewModels"
+        xmlns:converters="clr-namespace:APR_TEST.Converters"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="MainWindow"  Height="auto" Width="800" SizeToContent="WidthAndHeight">
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
-    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-        <Image Source="{Binding CurrentFile.DisplayImage}" Stretch="Uniform" Width="600" Height="350"/>
-        <Button Content="커맨드" Command="{Binding LoadImageCommand}" Width="200" Height="40"/>
+    <Window.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Window.Resources>
+    <StackPanel VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+        <Label Content="{Binding CurrentFile.DetectPerson}" HorizontalAlignment="Center" Margin="10" FontSize="16" FontWeight="Bold"/>
+        <Image Source="{Binding CurrentFile.DisplayImage}" Stretch="Uniform" MaxWidth="800" MaxHeight="600"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <Button Content="사진 OR 영상" Command="{Binding LoadImageCommand}" Width="200" Height="40" Margin="10"/>
+            <Button Content="중지" Command="{Binding StopVideoCommand}" Width="200" Height="40" Margin="10" Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}" />
+        </StackPanel>
+        
     </StackPanel>
+
 </Window>

@@ -8,6 +8,19 @@ namespace APR_TEST.Models
     public class FileData : INotifyPropertyChanged
     {
         public string FilePath { get; set; }
+        public string _detectPerson;
+        public string DetectPerson
+        {
+            get => _detectPerson;
+            set
+            {
+                if (_detectPerson != value)
+                {
+                    _detectPerson = value;
+                    OnPropertyChanged(nameof(DetectPerson));
+                }
+            }
+        }
         private BitmapSource _displayImage;
         public BitmapSource DisplayImage
         {
@@ -16,6 +29,9 @@ namespace APR_TEST.Models
             {
                 if (_displayImage != value)
                 {
+                    if (_displayImage is IDisposable disposable)
+                        disposable.Dispose(); // 대부분 BitmapSource는 IDisposable이 아님. 단, 커스텀 객체인 경우만 적용
+
                     _displayImage = value;
                     OnPropertyChanged(nameof(DisplayImage));
                 }
