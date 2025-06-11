@@ -55,7 +55,7 @@ namespace APR_TEST.Utils
 
                 using var dlibImage = Dlib.LoadImageData<RgbPixel>(array, (uint)mat.Height, (uint)mat.Width, (uint)(mat.Width * mat.ElemSize()));
                 var faces = _faceDetector.Operator(dlibImage);
-                CurrentFile.DetectPerson = string.Format("{0}명 발견", faces.Length);
+                CurrentFile.DetectPerson = $"{faces.Length} faces detected";
                 foreach (var face in faces)
                 {
                     var shape = _predictor.Detect(dlibImage, face);
@@ -67,7 +67,7 @@ namespace APR_TEST.Utils
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"[DetectAndDecorateFace] 예외 발생: {ex.Message}");
+                Console.WriteLine($"[DetectAndDecorateFace] 예외 발생: {ex.Message}");
                 return CreateBlankFallbackImage(600, 400, Colors.LightGray);
             }
         }
@@ -160,5 +160,17 @@ namespace APR_TEST.Utils
                 }
             }
         }
+
+        public static void Dispose()
+        {
+            _predictor?.Dispose();
+            _predictor = null;
+
+            _faceDetector = null;
+
+            originalNoseImg?.Dispose();
+            originalNoseImg = null;
+        }
+
     }
 }

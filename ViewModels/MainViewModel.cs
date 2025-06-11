@@ -5,14 +5,11 @@ using APR_TEST.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-using DlibDotNet;
-
 using Microsoft.Win32;
 using OpenCvSharp;
-using OpenCvSharp.WpfExtensions;
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -21,9 +18,17 @@ namespace APR_TEST.ViewModels
 {
     public partial class MainViewModel : ViewModelBase
     {
-        private VideoCapture? _capture;
+        [DllImport("winmm.dll", SetLastError = true, ExactSpelling = true)]
+        public static extern uint timeBeginPeriod(uint uMilliseconds);
+
+        [DllImport("winmm.dll", SetLastError = true, ExactSpelling = true)]
+        public static extern uint timeEndPeriod(uint uMilliseconds);
 
         private MediaPlayer? _mediaPlayer;
+
+        private static bool _timeBeginPeriodCalled = false;
+
+        private VideoCapture? _capture;
 
         [ObservableProperty]
         private FileData? currentFile;
@@ -193,34 +198,35 @@ namespace APR_TEST.ViewModels
 
             IsRunning = true;
             var mat = new Mat();
-            var sw = new System.Diagnostics.Stopwatch();
-            int targetFps = 30;
-            int targetFrameTime = 1000 / targetFps;
-
+            double fps = _capture.Get(VideoCaptureProperties.Fps);
+            //프레임 보정
+            int approximateFps = (fps > 50) ? 60 :
+                                 (fps > 25) ? 30 :
+                                 25;
+            int targetFrameTime = 1000 / approximateFps;
             int frameCount = 0;
             int processEveryNthFrame = 2;
-            BitmapSource? lastImage = null;
-
-            if (MessageBox.Show("소리를 재생하시겠습니까?", "소리", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-            {
-                // 오디오 재생
-                _mediaPlayer = new MediaPlayer();
-                _mediaPlayer.Open(new Uri(CurrentFile.FilePath));
-                _mediaPlayer.Volume = 1.0;
-
-                _mediaPlayer.MediaOpened += (s, e) => _mediaPlayer.Play();
-            }
 
 
             try
             {
+                if (MessageBox.Show("소리를 재생하시겠습니까?", "소리", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                {
+                    // 오디오 재생
+                    _mediaPlayer = new MediaPlayer();
+                    _mediaPlayer.Open(new Uri(CurrentFile.FilePath));
+                    _mediaPlayer.Volume = 1.0;
+
+                    _mediaPlayer.MediaOpened += (s, e) => _mediaPlayer.Play();
+                }
+
+                var sw = new Stopwatch();
                 IsVideoPlaying = true;
                 IsWebcamRunning = false;
-
+                TimeBeginPeriodSafe(); //Win32 API timeBeginPeriod(1)을 호출하여 Stopwatch 정밀도를 1ms로 설정
                 while (IsRunning)
                 {
                     sw.Restart();
-
                     _capture.Read(mat);
                     if (mat.Empty()) break;
 
@@ -234,7 +240,7 @@ namespace APR_TEST.ViewModels
                         {
                             var bmp = ImageProcessor.DetectAndDecorateFace(matCopy, CurrentFile);
                             bmp.Freeze();
-                            App.Current.Dispatcher.Invoke(() =>
+                            App.Current.Dispatcher.BeginInvoke(() =>
                             {
                                 if (IsRunning) CurrentFile.DisplayImage = bmp;
                             });
@@ -242,18 +248,47 @@ namespace APR_TEST.ViewModels
                     }
 
                     sw.Stop();
-                    int elapsed = (int)sw.ElapsedMilliseconds;
-                    int wait = Math.Max(0, targetFrameTime - elapsed);
+                    int wait = Math.Max(0, targetFrameTime - (int)sw.ElapsedMilliseconds);
                     await Task.Delay(wait);
                 }
+                
             }
             finally
             {
+                TimeEndPeriodSafe(); //해제
                 mat.Dispose();
                 _capture?.Release();
                 _capture?.Dispose();
                 StopVideo();
             }
+        }
+
+        public void TimeBeginPeriodSafe()
+        {
+            if (!_timeBeginPeriodCalled)
+            {
+                timeBeginPeriod(1);
+                _timeBeginPeriodCalled = true;
+            }
+        }
+
+        public void TimeEndPeriodSafe()
+        {
+            if (_timeBeginPeriodCalled)
+            {
+                timeEndPeriod(1);
+                _timeBeginPeriodCalled = false;
+            }
+        }
+
+        public void CleanupResources()
+        {
+            IsVideoPlaying = false;
+            IsWebcamRunning = false;
+
+            IsRunning = false;
+            CurrentFile = null;
+            TimeEndPeriodSafe();
         }
     }
 }
